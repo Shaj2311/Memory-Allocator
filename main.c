@@ -7,7 +7,7 @@
 
 int PAGE_SIZE = 0;
 
-typedef struct
+typedef struct Block
 {
 	void *start;
 
@@ -17,6 +17,9 @@ typedef struct
 	struct Block *prev;
 	struct Block *next;
 } Block;
+
+Block *blockListStart = 0;
+Block *blockListEnd = 0;
 
 void *malloc(size_t bytes);
 void free(void *ptr);
@@ -50,9 +53,7 @@ void *malloc(size_t bytes)
 
 		//return NULL ptr on failure
 		if(ptr == MAP_FAILED)
-		{
 			return 0;
-		}
 
 		//get pointer pointing to start of user's allocated memory
 		void *startPtr = ptr + sizeof(Block);
@@ -69,7 +70,58 @@ void *malloc(size_t bytes)
 
 	}
 
-	//TODO: if small allocation, check free list or use sbrk
+	//if small allocation, check free list or use sbrk
+
+	//empty block list
+	if(!blockListStart)
+	{
+		//get large chunk of heap memory
+		void *initialBreak = sbrk(SBRK_CUTOFF + 2 * sizeof(Block)); //here we're saving 2 blocks more than SBRK_CUTOFF in case caller requests something like SBRK_CUTOFF - 1 bytes (so we don't have enough memory to store metadata)
+		if(initialBreak == (void *)-1)
+		{
+			puts("OUT OF MEMORY");
+			exit(1);
+		}
+
+		//split memory into two blocks:
+		//memory to be returned now
+		//remaining memory to be kept for later
+		void *currMem = initialBreak;
+		void *remainderMem = initialBreak + sizeof(Block) + bytes;
+
+		//set current block metadata
+		void *currMemStart = currMem + sizeof(Block);
+		Block *currBlock = (Block *)currMem;
+
+		currBlock->start = currMemStart;
+		currBlock->isFree = 0;
+		currBlock->size = bytes;
+		currBlock->next = remainderMem;
+		currBlock->prev = 0;
+
+
+		//set remainder block metadata
+		void *remainderMemStart = remainderMem + sizeof(Block);
+		Block *remainderBlock = (Block *)remainderMem;
+
+		remainderBlock->start = remainderMemStart;
+		remainderBlock->isFree = 1;
+		remainderBlock->size = (SBRK_CUTOFF + 2 * sizeof(Block)) - (sizeof(Block) + bytes); //total size of new memory - size of current block
+		remainderBlock->next = 0;
+		remainderBlock->prev = currBlock;
+
+
+		//set current block as start of list
+		blockListStart = currBlock;
+		//set remainder block as end of list
+		blockListEnd = remainderBlock;
+
+		//return current block of memory
+		return currMemStart;
+	}
+
+	//TODO: If list not empty, check blocks list for empty block (first fit), split and assign
+
 	return 0;
 }
 void free(void *ptr)
@@ -90,5 +142,6 @@ void free(void *ptr)
 		}
 		return;
 	}
-	//TODO: If small allocation, ...
+	//TODO: If small allocation, search blocks list for block, mark as free, coalesce
+	//If free block at end of list, move program break back?
 }
