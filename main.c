@@ -31,11 +31,11 @@ int main()
 	PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
 
 	char *ptr = malloc(8);
-	memset(ptr, 0x99, 8);
+	memset(ptr, 0xFF, 8);
 	char *ptr2 = malloc(8);
-	memset(ptr2, 0x99, 8);
+	memset(ptr2, 0xFF, 8);
 	char *ptr3 = malloc(16);
-	memset(ptr3, 0x99, 16);
+	memset(ptr3, 0xFF, 16);
 }
 
 void *malloc(size_t bytes)
@@ -164,13 +164,73 @@ void *malloc(size_t bytes)
 		currBlock->start = currMemStart;
 		currBlock->next = remainderBlock;
 
+		//update list end if needed
+		if(blockListEnd == currBlock)
+			blockListEnd = remainderBlock;
+
 		//return current allocated memory
 		return currMemStart;
 	}
 
-	//TODO: Nothing found in free list -> use sbrk to get new chunk
+	//Nothing found in free list -> use sbrk to get new chunk
 
-	return 0;
+	//If tail block is free, we fetch large chunk and coalesce it with tail block
+	if(blockListEnd->isFree)
+	{
+		//get big chunk of memory
+		if(sbrk(SBRK_CUTOFF + sizeof(Block)) == (void *)-1) //here, we only need space for one extra block as we already have a free tail block
+		{
+			puts("OUT OF MEMORY");
+			exit(1);
+		}
+
+		//update metadata to merge new chunk with tail block
+		blockListEnd->size += (SBRK_CUTOFF + sizeof(Block));
+	}
+	//If tail block is not free, fetch large chunk and set as new tail block
+	else
+	{
+		void *initialBreak = sbrk(SBRK_CUTOFF + 2 * sizeof(Block)); //here we're saving 2 blocks more than SBRK_CUTOFF in case caller requests something like SBRK_CUTOFF - 1 bytes (so we don't have enough memory to store metadata)
+		if(initialBreak == (void *)-1)
+		{
+			puts("OUT OF MEMORY");
+			exit(1);
+		}
+
+		Block *newBlock = initialBreak;
+
+		newBlock->start = (void *)(newBlock + 1);
+		newBlock->size = SBRK_CUTOFF + sizeof(Block);
+		newBlock->isFree = 1;
+		newBlock->next = 0;
+		newBlock->prev = blockListEnd;
+
+		//update tail block
+		blockListEnd = newBlock;
+	}
+
+	//Split tail block
+	currBlock = blockListEnd;
+	Block *remainderBlock = (void *)(currBlock) + sizeof(Block) + bytes;
+
+	//set remainder block metadata
+	remainderBlock->isFree = 1;
+	remainderBlock->start = remainderBlock + 1;
+	remainderBlock->size = currBlock->size - bytes;
+	remainderBlock->next = 0;
+	remainderBlock->prev = currBlock;
+
+	//update current block metadata
+	currBlock->isFree = 0;
+	currBlock->size = bytes;
+	currBlock->start = currBlock + 1;
+	currBlock->next = remainderBlock;
+
+	//update block list end pointer
+	blockListEnd = remainderBlock;
+
+	//return current allocation
+	return currBlock->start;
 }
 void free(void *ptr)
 {
