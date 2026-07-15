@@ -24,7 +24,7 @@ Block *blockListStart = 0;
 Block *blockListEnd = 0;
 
 void *myMalloc(size_t bytes);
-void free(void *ptr);
+void myFree(void *ptr);
 
 void dbgPrintHeap();
 
@@ -35,12 +35,24 @@ int main()
 	char *ptr = myMalloc(8);
 	memset(ptr, 0xFF, 8);
 	dbgPrintHeap();
+
 	char *ptr2 = myMalloc(8);
 	memset(ptr2, 0xFF, 8);
 	dbgPrintHeap();
+
 	char *ptr3 = myMalloc(16);
 	memset(ptr3, 0xFF, 16);
 	dbgPrintHeap();
+
+	myFree(ptr2);
+	dbgPrintHeap();
+
+	myFree(ptr);
+	dbgPrintHeap();
+
+	myFree(ptr3);
+	dbgPrintHeap();
+
 }
 
 void *myMalloc(size_t bytes)
@@ -237,7 +249,7 @@ void *myMalloc(size_t bytes)
 	//return current allocation
 	return currBlock->start;
 }
-void free(void *ptr)
+void myFree(void *ptr)
 {
 	//get metadata
 	void *blockPtr = ptr - sizeof(Block);
@@ -255,7 +267,67 @@ void free(void *ptr)
 		}
 		return;
 	}
-	//TODO: If small allocation, search blocks list for block, mark as free, coalesce
+	//If small allocation, search blocks list for block, mark as free, coalesce
+
+	//search for block in blocks list
+	Block *currBlock = blockListStart;
+	while(currBlock)
+	{
+		if(currBlock->start == ptr && !currBlock->isFree)
+			break;
+		currBlock = currBlock->next;
+	}
+	//not found in list
+	if(!currBlock)
+	{
+		puts("Invalid pointer");
+		exit(1);
+	}
+
+	//block found, mark as free
+	currBlock->isFree = 1;
+
+	//get neighbors
+	Block *nextBlock = currBlock->next;
+	Block *prevBlock = currBlock->prev;
+
+	//check if next block is free, coalesce
+	if(nextBlock && nextBlock->isFree)
+	{
+		//remove next block from list
+		currBlock->next = nextBlock->next;
+		if(nextBlock->next)
+			nextBlock->next->prev = currBlock;
+
+		//update current block's metadata
+		currBlock->size += sizeof(Block) + nextBlock->size;
+
+		//if deleted block was tail, update tail pointer
+		if(blockListEnd == nextBlock)
+			blockListEnd = currBlock;
+	}
+
+	//check if previous block is free, coalesce
+	if(prevBlock && prevBlock->isFree)
+	{
+		//remove current block from list
+		prevBlock->next = currBlock->next;
+		if(currBlock->next)
+			currBlock->next->prev = prevBlock;
+
+		//update previous block's metadata
+		prevBlock->size += sizeof(Block) + currBlock->size;
+
+		//if deleted block was tail, update tail pointer
+		if(blockListEnd == currBlock)
+			blockListEnd = prevBlock;
+
+		//mark large block as current
+		currBlock = prevBlock;
+	}
+
+
+	//TODO: if new block is now tail, reduce its size if exceeds SBRK_CUTOFF
 	//If free block at end of list, move program break back?
 }
 
