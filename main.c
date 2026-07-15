@@ -28,14 +28,14 @@ int main()
 {
 	PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
 
-	void *ptr = malloc(200000);
-	free(ptr);
+	void *ptr = malloc(6);
+	void *ptr2 = malloc(131066);
 }
 
 void *malloc(size_t bytes)
 {
 	//if large allocation, use mmap
-	if(bytes > SBRK_CUTOFF)
+	if(bytes >= SBRK_CUTOFF)
 	{
 		//round up memory size to nearest multiple of page size
 		//(round down (bytes + PAGE_SIZE - 1))
@@ -106,7 +106,7 @@ void *malloc(size_t bytes)
 
 		remainderBlock->start = remainderMemStart;
 		remainderBlock->isFree = 1;
-		remainderBlock->size = (SBRK_CUTOFF + 2 * sizeof(Block)) - (sizeof(Block) + bytes); //total size of new memory - size of current block
+		remainderBlock->size = SBRK_CUTOFF - bytes;
 		remainderBlock->next = 0;
 		remainderBlock->prev = currBlock;
 
@@ -120,7 +120,27 @@ void *malloc(size_t bytes)
 		return currMemStart;
 	}
 
-	//TODO: If list not empty, check blocks list for empty block (first fit), split and assign
+	//If list not empty, check blocks list for empty block (first fit)
+	Block *searchBlock = blockListStart;
+	while(searchBlock)
+	{
+		//if block not free or too small, skip
+		if(!searchBlock->isFree || searchBlock->size < bytes)
+		{
+			searchBlock = searchBlock->next;
+			continue;
+		}
+
+		//found first block that is big enough (First Fit)
+
+		//if block is exactly the right size, simply allocate it and return
+		if(searchBlock->size == bytes)
+		{
+			searchBlock->isFree = 0;
+			return searchBlock->start;
+		}
+		//TODO: if block is larger than required size, split
+	}
 
 	return 0;
 }
@@ -133,7 +153,7 @@ void free(void *ptr)
 	int size = ((Block *)blockPtr)->size;
 
 	//If large allocation, use munmap
-	if(size > SBRK_CUTOFF)
+	if(size >= SBRK_CUTOFF)
 	{
 		if(munmap(blockPtr, sizeof(Block) + size))
 		{
