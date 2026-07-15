@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+//DEBUG
+#include <string.h>
 #define SBRK_CUTOFF 131072 //128 kB
 
 int PAGE_SIZE = 0;
@@ -28,8 +30,12 @@ int main()
 {
 	PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
 
-	void *ptr = malloc(6);
-	void *ptr2 = malloc(131066);
+	char *ptr = malloc(8);
+	memset(ptr, 0x99, 8);
+	char *ptr2 = malloc(8);
+	memset(ptr2, 0x99, 8);
+	char *ptr3 = malloc(16);
+	memset(ptr3, 0x99, 16);
 }
 
 void *malloc(size_t bytes)
@@ -121,26 +127,48 @@ void *malloc(size_t bytes)
 	}
 
 	//If list not empty, check blocks list for empty block (first fit)
-	Block *searchBlock = blockListStart;
-	while(searchBlock)
+	Block *currBlock = blockListStart;
+	while(currBlock)
 	{
 		//if block not free or too small, skip
-		if(!searchBlock->isFree || searchBlock->size < bytes)
+		if(!currBlock->isFree || (currBlock->size != bytes && currBlock->size < bytes + sizeof(Block)))
 		{
-			searchBlock = searchBlock->next;
+			currBlock = currBlock->next;
 			continue;
 		}
 
 		//found first block that is big enough (First Fit)
 
 		//if block is exactly the right size, simply allocate it and return
-		if(searchBlock->size == bytes)
+		if(currBlock->size == bytes)
 		{
-			searchBlock->isFree = 0;
-			return searchBlock->start;
+			currBlock->isFree = 0;
+			return currBlock->start;
 		}
-		//TODO: if block is larger than required size, split
+
+		//if block is larger than required size, split block
+		void *currMemStart = (void *)(currBlock + 1);
+		Block *remainderBlock = currMemStart + bytes;
+		void *remainderMemStart = (void *)(remainderBlock + 1);
+
+		//set metadata of remainder block
+		remainderBlock->isFree = 1;
+		remainderBlock->size = currBlock->size - bytes;
+		remainderBlock->start = remainderMemStart;
+		remainderBlock->next = currBlock->next;
+		remainderBlock->prev = currBlock;
+
+		//update metadata of current block
+		currBlock->isFree = 0;
+		currBlock->size = bytes;
+		currBlock->start = currMemStart;
+		currBlock->next = remainderBlock;
+
+		//return current allocated memory
+		return currMemStart;
 	}
+
+	//TODO: Nothing found in free list -> use sbrk to get new chunk
 
 	return 0;
 }
