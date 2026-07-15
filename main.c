@@ -23,22 +23,27 @@ typedef struct Block
 Block *blockListStart = 0;
 Block *blockListEnd = 0;
 
-void *malloc(size_t bytes);
+void *myMalloc(size_t bytes);
 void free(void *ptr);
+
+void dbgPrintHeap();
 
 int main()
 {
 	PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
 
-	char *ptr = malloc(8);
+	char *ptr = myMalloc(8);
 	memset(ptr, 0xFF, 8);
-	char *ptr2 = malloc(8);
+	dbgPrintHeap();
+	char *ptr2 = myMalloc(8);
 	memset(ptr2, 0xFF, 8);
-	char *ptr3 = malloc(16);
+	dbgPrintHeap();
+	char *ptr3 = myMalloc(16);
 	memset(ptr3, 0xFF, 16);
+	dbgPrintHeap();
 }
 
-void *malloc(size_t bytes)
+void *myMalloc(size_t bytes)
 {
 	//if large allocation, use mmap
 	if(bytes >= SBRK_CUTOFF)
@@ -252,4 +257,21 @@ void free(void *ptr)
 	}
 	//TODO: If small allocation, search blocks list for block, mark as free, coalesce
 	//If free block at end of list, move program break back?
+}
+
+void dbgPrintHeap()
+{
+	Block *currBlock = blockListStart;
+	while(currBlock)
+	{
+		if(currBlock->isFree)
+			printf("\033[32m");
+		else
+			printf("\033[31m");
+
+		printf("%ld\033[0m |", currBlock->size);
+
+		currBlock = currBlock->next;
+	}
+	puts("");
 }
