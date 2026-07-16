@@ -317,22 +317,11 @@ void free(void *ptr)
 		}
 		return;
 	}
-	//If small allocation, search blocks list for block, mark as free, coalesce
 
-	//search for block in blocks list
-	Block *currBlock = blockListStart;
-	while(currBlock)
-	{
-		if(currBlock + 1 == ptr && !currBlock->isFree)
-			break;
-		currBlock = currBlock->next;
-	}
-	//not found in list
-	if(!currBlock)
-	{
-		puts("Invalid pointer");
-		exit(1);
-	}
+	//If small allocation, free block in blocks list
+	
+	//get block metadata
+	Block *currBlock = ptr - sizeof(Block);
 
 	//block found, mark as free
 	currBlock->isFree = 1;
@@ -411,4 +400,12 @@ void dbgPrintHeap()
 		currBlock = currBlock->next;
 	}
 	puts("");
+}
+
+size_t malloc_usable_size(void *ptr)
+{
+	if(!ptr)
+		return 0;
+	Block *block = ptr - sizeof(Block);
+	return block->size;
 }
