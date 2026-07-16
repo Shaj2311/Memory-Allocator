@@ -24,12 +24,14 @@ Block *blockListStart = 0;
 Block *blockListEnd = 0;
 
 void *malloc(size_t bytes);
+void *calloc(size_t nelem, size_t elsize);
 void free(void *ptr);
 
 void dbgPrintHeap();
 
 int main()
 {
+	setvbuf(stdout, 0, _IONBF, 0);
 	PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
 
 	dbgPrintHeap();
@@ -52,10 +54,20 @@ int main()
 	free(ptr1);
 	dbgPrintHeap();
 
+	char *ptr3 = calloc(5, sizeof(double));
+	dbgPrintHeap();
+
+	free(ptr3);
+	dbgPrintHeap();
+
 }
 
 void *malloc(size_t bytes)
 {
+	//if zero size, return
+	if(!bytes)
+		return 0;
+
 	//if large allocation, use mmap
 	if(bytes >= SBRK_CUTOFF)
 	{
@@ -249,6 +261,25 @@ void *malloc(size_t bytes)
 	//return current allocation
 	return currBlock->start;
 }
+
+void *calloc(size_t nelem, size_t elsize)
+{
+	//if zero size, return
+	if(!nelem || !elsize)
+		return 0;
+
+	//get memory chunk
+	void *ptr = malloc(nelem * elsize);
+	if(!ptr)
+		return 0;
+
+	//wipe to zero
+	memset(ptr, 0, nelem * elsize);
+
+	//return memory
+	return ptr;
+}
+
 void free(void *ptr)
 {
 	//get metadata
