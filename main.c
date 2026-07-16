@@ -25,6 +25,7 @@ Block *blockListEnd = 0;
 
 void *malloc(size_t bytes);
 void *calloc(size_t nelem, size_t elsize);
+void *realloc(void *ptr, size_t size);
 void free(void *ptr);
 
 void dbgPrintHeap();
@@ -36,28 +37,13 @@ int main()
 
 	dbgPrintHeap();
 
-	char *ptr0 = malloc(130000);
+	char *ptr = malloc(4);
 	dbgPrintHeap();
 
-	char *ptr1 = malloc(8);
+	ptr = realloc(ptr, 200000);
 	dbgPrintHeap();
 
-	void *ptr2 = malloc(131064);
-	dbgPrintHeap();
-
-	free(ptr2);
-	dbgPrintHeap();
-
-	free(ptr0);
-	dbgPrintHeap();
-
-	free(ptr1);
-	dbgPrintHeap();
-
-	char *ptr3 = calloc(5, sizeof(double));
-	dbgPrintHeap();
-
-	free(ptr3);
+	free(ptr);
 	dbgPrintHeap();
 
 }
@@ -278,6 +264,35 @@ void *calloc(size_t nelem, size_t elsize)
 
 	//return memory
 	return ptr;
+}
+
+void *realloc(void *ptr, size_t size)
+{
+	//if null ptr passed, return 0
+	if(!ptr)
+		return 0;
+
+	//if new size <= old size, return pointer (may cause internal fragmentation)
+	Block *block = ptr - sizeof(Block);
+	if(size <= block->size)
+		return ptr;
+
+	//if new size is zero, simply free the block
+	if(!size)
+	{
+		free(ptr);
+		return 0;
+	}
+
+	//if new size greater than old size,
+	//create a new block
+	void *newPtr = malloc(size);
+	//copy data to new block
+	memcpy(newPtr, ptr, block->size);
+	//deallocate old block
+	free(ptr);
+	//return new allocated block
+	return newPtr;
 }
 
 void free(void *ptr)
