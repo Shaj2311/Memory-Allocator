@@ -23,8 +23,8 @@ typedef struct Block
 Block *blockListStart = 0;
 Block *blockListEnd = 0;
 
-void *myMalloc(size_t bytes);
-void myFree(void *ptr);
+void *malloc(size_t bytes);
+void free(void *ptr);
 
 void dbgPrintHeap();
 
@@ -32,30 +32,29 @@ int main()
 {
 	PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
 
-	char *ptr = myMalloc(8);
-	memset(ptr, 0xFF, 8);
 	dbgPrintHeap();
 
-	char *ptr2 = myMalloc(8);
-	memset(ptr2, 0xFF, 8);
+	char *ptr0 = malloc(130000);
 	dbgPrintHeap();
 
-	char *ptr3 = myMalloc(16);
-	memset(ptr3, 0xFF, 16);
+	char *ptr1 = malloc(8);
 	dbgPrintHeap();
 
-	myFree(ptr2);
+	void *ptr2 = malloc(131064);
 	dbgPrintHeap();
 
-	myFree(ptr);
+	free(ptr2);
 	dbgPrintHeap();
 
-	myFree(ptr3);
+	free(ptr0);
+	dbgPrintHeap();
+
+	free(ptr1);
 	dbgPrintHeap();
 
 }
 
-void *myMalloc(size_t bytes)
+void *malloc(size_t bytes)
 {
 	//if large allocation, use mmap
 	if(bytes >= SBRK_CUTOFF)
@@ -170,7 +169,7 @@ void *myMalloc(size_t bytes)
 
 		//set metadata of remainder block
 		remainderBlock->isFree = 1;
-		remainderBlock->size = currBlock->size - bytes;
+		remainderBlock->size = currBlock->size - bytes - sizeof(Block);
 		remainderBlock->start = remainderMemStart;
 		remainderBlock->next = currBlock->next;
 		remainderBlock->prev = currBlock;
@@ -223,6 +222,7 @@ void *myMalloc(size_t bytes)
 		newBlock->prev = blockListEnd;
 
 		//update tail block
+		blockListEnd->next = newBlock;
 		blockListEnd = newBlock;
 	}
 
@@ -233,7 +233,7 @@ void *myMalloc(size_t bytes)
 	//set remainder block metadata
 	remainderBlock->isFree = 1;
 	remainderBlock->start = remainderBlock + 1;
-	remainderBlock->size = currBlock->size - bytes;
+	remainderBlock->size = currBlock->size - bytes - sizeof(Block);
 	remainderBlock->next = 0;
 	remainderBlock->prev = currBlock;
 
@@ -249,7 +249,7 @@ void *myMalloc(size_t bytes)
 	//return current allocation
 	return currBlock->start;
 }
-void myFree(void *ptr)
+void free(void *ptr)
 {
 	//get metadata
 	void *blockPtr = ptr - sizeof(Block);
@@ -327,7 +327,22 @@ void myFree(void *ptr)
 	}
 
 
-	//TODO: if new block is now tail, reduce its size if exceeds SBRK_CUTOFF
+	//if new block is now tail, reduce its size if exceeds SBRK_CUTOFF
+	if(blockListEnd == currBlock)
+	{
+		size_t reduction = blockListEnd->size - (SBRK_CUTOFF - 1);
+
+		if(sbrk(-reduction) == (void *)-1)
+		{
+			puts("Could not free memory");
+			exit(1);
+		}
+
+		currBlock->size -= reduction;
+	}
+
+
+
 	//If free block at end of list, move program break back?
 }
 
