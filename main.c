@@ -15,9 +15,11 @@ typedef struct Block
 
 	int isFree;
 	size_t size;
-
+	size_t padding;
 	struct Block *prev;
 	struct Block *next;
+	size_t padding2;
+	int padding3;
 } Block;
 
 Block *blockListStart = 0;
@@ -35,21 +37,25 @@ int main()
 	setvbuf(stdout, 0, _IONBF, 0);
 	PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
 
+	char *ptr0 = malloc(4);
 	dbgPrintHeap();
 
-	char *ptr = malloc(4);
+	char *ptr1 = malloc(8);
 	dbgPrintHeap();
 
-	ptr = realloc(ptr, 200000);
+	free(ptr0);
 	dbgPrintHeap();
 
-	free(ptr);
+	free(ptr1);
 	dbgPrintHeap();
 
 }
 
 void *malloc(size_t bytes)
 {
+	//align request to 16B
+	bytes = (bytes + 15) & ~15;
+
 	//if zero size, return
 	if(!bytes)
 		return 0;
@@ -259,8 +265,12 @@ void *calloc(size_t nelem, size_t elsize)
 	if(!ptr)
 		return 0;
 
-	//wipe to zero
-	memset(ptr, 0, nelem * elsize);
+	//wipe to zero (manually)
+	char *p = ptr;
+	for(size_t i = 0; i < nelem * elsize; i++)
+	{
+		p[i] = 0;
+	}
 
 	//return memory
 	return ptr;
@@ -268,9 +278,12 @@ void *calloc(size_t nelem, size_t elsize)
 
 void *realloc(void *ptr, size_t size)
 {
-	//if null ptr passed, return 0
+	//if null ptr passed, allocate new memory
 	if(!ptr)
-		return 0;
+	{
+		ptr = malloc(size);
+		return ptr;
+	}
 
 	//if new size <= old size, return pointer (may cause internal fragmentation)
 	Block *block = ptr - sizeof(Block);
@@ -297,6 +310,10 @@ void *realloc(void *ptr, size_t size)
 
 void free(void *ptr)
 {
+	//return if null pointer
+	if(!ptr)
+		return;
+
 	//get metadata
 	void *blockPtr = ptr - sizeof(Block);
 
@@ -376,7 +393,7 @@ void free(void *ptr)
 	//if new block is now tail, reduce its size if exceeds SBRK_CUTOFF
 	if(blockListEnd == currBlock)
 	{
-		size_t reduction = blockListEnd->size - (SBRK_CUTOFF - 1);
+		size_t reduction = blockListEnd->size - (SBRK_CUTOFF);
 
 		if(sbrk(-reduction) == (void *)-1)
 		{
