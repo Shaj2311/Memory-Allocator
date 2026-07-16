@@ -11,15 +11,10 @@ int PAGE_SIZE = 0;
 
 typedef struct Block
 {
-	void *start;
-
 	int isFree;
 	size_t size;
-	size_t padding;
 	struct Block *prev;
 	struct Block *next;
-	size_t padding2;
-	int padding3;
 } Block;
 
 Block *blockListStart = 0;
@@ -90,7 +85,6 @@ void *malloc(size_t bytes)
 		block->next = 0;
 		block->prev = 0;
 		block->size = bytes;
-		block->start = startPtr;
 
 		return startPtr;
 
@@ -119,7 +113,6 @@ void *malloc(size_t bytes)
 		void *currMemStart = currMem + sizeof(Block);
 		Block *currBlock = (Block *)currMem;
 
-		currBlock->start = currMemStart;
 		currBlock->isFree = 0;
 		currBlock->size = bytes;
 		currBlock->next = remainderMem;
@@ -130,7 +123,6 @@ void *malloc(size_t bytes)
 		void *remainderMemStart = remainderMem + sizeof(Block);
 		Block *remainderBlock = (Block *)remainderMem;
 
-		remainderBlock->start = remainderMemStart;
 		remainderBlock->isFree = 1;
 		remainderBlock->size = SBRK_CUTOFF - bytes;
 		remainderBlock->next = 0;
@@ -163,7 +155,7 @@ void *malloc(size_t bytes)
 		if(currBlock->size == bytes)
 		{
 			currBlock->isFree = 0;
-			return currBlock->start;
+			return currBlock + 1;
 		}
 
 		//if block is larger than required size, split block
@@ -174,14 +166,12 @@ void *malloc(size_t bytes)
 		//set metadata of remainder block
 		remainderBlock->isFree = 1;
 		remainderBlock->size = currBlock->size - bytes - sizeof(Block);
-		remainderBlock->start = remainderMemStart;
 		remainderBlock->next = currBlock->next;
 		remainderBlock->prev = currBlock;
 
 		//update metadata of current block
 		currBlock->isFree = 0;
 		currBlock->size = bytes;
-		currBlock->start = currMemStart;
 		currBlock->next = remainderBlock;
 
 		//update list end if needed
@@ -219,7 +209,6 @@ void *malloc(size_t bytes)
 
 		Block *newBlock = initialBreak;
 
-		newBlock->start = (void *)(newBlock + 1);
 		newBlock->size = SBRK_CUTOFF + sizeof(Block);
 		newBlock->isFree = 1;
 		newBlock->next = 0;
@@ -236,7 +225,6 @@ void *malloc(size_t bytes)
 
 	//set remainder block metadata
 	remainderBlock->isFree = 1;
-	remainderBlock->start = remainderBlock + 1;
 	remainderBlock->size = currBlock->size - bytes - sizeof(Block);
 	remainderBlock->next = 0;
 	remainderBlock->prev = currBlock;
@@ -244,14 +232,13 @@ void *malloc(size_t bytes)
 	//update current block metadata
 	currBlock->isFree = 0;
 	currBlock->size = bytes;
-	currBlock->start = currBlock + 1;
 	currBlock->next = remainderBlock;
 
 	//update block list end pointer
 	blockListEnd = remainderBlock;
 
 	//return current allocation
-	return currBlock->start;
+	return currBlock + 1;
 }
 
 void *calloc(size_t nelem, size_t elsize)
@@ -336,7 +323,7 @@ void free(void *ptr)
 	Block *currBlock = blockListStart;
 	while(currBlock)
 	{
-		if(currBlock->start == ptr && !currBlock->isFree)
+		if(currBlock + 1 == ptr && !currBlock->isFree)
 			break;
 		currBlock = currBlock->next;
 	}
