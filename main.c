@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-//DEBUG
 #include <string.h>
 #define SBRK_CUTOFF 131072 //128 kB
 
@@ -24,9 +23,11 @@ void *malloc(size_t bytes);
 void *calloc(size_t nelem, size_t elsize);
 void *realloc(void *ptr, size_t size);
 void free(void *ptr);
-void dbgPrintHeap();
 
-#ifdef TEST
+void dbgPrintHeap();
+size_t malloc_usable_size(void *ptr);
+
+#ifdef MALLOC_TEST
 int main()
 {
 	setvbuf(stdout, 0, _IONBF, 0);
@@ -45,14 +46,15 @@ int main()
 	char *ptr3 = calloc(5, sizeof(int));
 	for(int i = 0; i < 5; i++)
 		ptr3[i] = i + 1;
+	dbgPrintHeap();
 
 	free(ptr0);
 	dbgPrintHeap();
 
-	free(ptr3);
+	free(ptr2);
 	dbgPrintHeap();
 
-	free(ptr2);
+	free(ptr3);
 	dbgPrintHeap();
 
 	free(ptr1);
@@ -97,9 +99,9 @@ void *malloc(size_t bytes)
 		//fill metadata section
 		Block *block = (Block *)ptr;
 		block->isFree = 0;
-		block->next = 0;
-		block->prev = 0;
 		block->size = bytes;
+		block->prev = 0;
+		block->next = 0;
 
 		return startPtr;
 
@@ -121,28 +123,20 @@ void *malloc(size_t bytes)
 		//split memory into two blocks:
 		//memory to be returned now
 		//remaining memory to be kept for later
-		void *currMem = initialBreak;
-		void *remainderMem = initialBreak + sizeof(Block) + bytes;
+		Block *currBlock = initialBreak;
+		Block *remainderBlock = (void *)(currBlock + 1) + bytes;
 
 		//set current block metadata
-		void *currMemStart = currMem + sizeof(Block);
-		Block *currBlock = (Block *)currMem;
-
 		currBlock->isFree = 0;
 		currBlock->size = bytes;
-		currBlock->next = remainderMem;
 		currBlock->prev = 0;
-
+		currBlock->next = remainderBlock;
 
 		//set remainder block metadata
-		void *remainderMemStart = remainderMem + sizeof(Block);
-		Block *remainderBlock = (Block *)remainderMem;
-
 		remainderBlock->isFree = 1;
 		remainderBlock->size = SBRK_CUTOFF - bytes;
-		remainderBlock->next = 0;
 		remainderBlock->prev = currBlock;
-
+		remainderBlock->next = 0;
 
 		//set current block as start of list
 		blockListStart = currBlock;
@@ -150,7 +144,7 @@ void *malloc(size_t bytes)
 		blockListEnd = remainderBlock;
 
 		//return current block of memory
-		return currMemStart;
+		return currBlock + 1;
 	}
 
 	//If list not empty, check blocks list for empty block (first fit)
@@ -174,15 +168,13 @@ void *malloc(size_t bytes)
 		}
 
 		//if block is larger than required size, split block
-		void *currMemStart = (void *)(currBlock + 1);
-		Block *remainderBlock = currMemStart + bytes;
-		void *remainderMemStart = (void *)(remainderBlock + 1);
+		Block *remainderBlock = (void *)(currBlock + 1) + bytes;
 
 		//set metadata of remainder block
 		remainderBlock->isFree = 1;
 		remainderBlock->size = currBlock->size - bytes - sizeof(Block);
-		remainderBlock->next = currBlock->next;
 		remainderBlock->prev = currBlock;
+		remainderBlock->next = currBlock->next;
 
 		//update metadata of current block
 		currBlock->isFree = 0;
@@ -194,7 +186,7 @@ void *malloc(size_t bytes)
 			blockListEnd = remainderBlock;
 
 		//return current allocated memory
-		return currMemStart;
+		return currBlock + 1;
 	}
 
 	//Nothing found in free list -> use sbrk to get new chunk
@@ -224,10 +216,10 @@ void *malloc(size_t bytes)
 
 		Block *newBlock = initialBreak;
 
-		newBlock->size = SBRK_CUTOFF + sizeof(Block);
 		newBlock->isFree = 1;
-		newBlock->next = 0;
+		newBlock->size = SBRK_CUTOFF + sizeof(Block);
 		newBlock->prev = blockListEnd;
+		newBlock->next = 0;
 
 		//update tail block
 		blockListEnd->next = newBlock;
@@ -236,13 +228,13 @@ void *malloc(size_t bytes)
 
 	//Split tail block
 	currBlock = blockListEnd;
-	Block *remainderBlock = (void *)(currBlock) + sizeof(Block) + bytes;
+	Block *remainderBlock = (void *)(currBlock + 1) + bytes;
 
 	//set remainder block metadata
 	remainderBlock->isFree = 1;
 	remainderBlock->size = currBlock->size - bytes - sizeof(Block);
-	remainderBlock->next = 0;
 	remainderBlock->prev = currBlock;
+	remainderBlock->next = 0;
 
 	//update current block metadata
 	currBlock->isFree = 0;
@@ -384,7 +376,7 @@ void free(void *ptr)
 	//if new block is now tail, reduce its size if exceeds SBRK_CUTOFF
 	if(blockListEnd == currBlock)
 	{
-		size_t reduction = blockListEnd->size - (SBRK_CUTOFF);
+		size_t reduction = blockListEnd->size - SBRK_CUTOFF;
 
 		if(sbrk(-reduction) == (void *)-1)
 		{
@@ -394,28 +386,22 @@ void free(void *ptr)
 
 		currBlock->size -= reduction;
 	}
-
-
-
-	//If free block at end of list, move program break back?
 }
 
+#ifdef MALLOC_TEST
 void dbgPrintHeap()
 {
 	Block *currBlock = blockListStart;
 	while(currBlock)
 	{
-		if(currBlock->isFree)
-			printf("\033[32m");
-		else
-			printf("\033[31m");
-
+		printf("\033[%dm", currBlock->isFree ? 32 : 31);
 		printf("%ld\033[0m |", currBlock->size);
 
 		currBlock = currBlock->next;
 	}
 	puts("");
 }
+#endif
 
 size_t malloc_usable_size(void *ptr)
 {
