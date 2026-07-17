@@ -24,9 +24,9 @@ void *malloc(size_t bytes);
 void *calloc(size_t nelem, size_t elsize);
 void *realloc(void *ptr, size_t size);
 void free(void *ptr);
-
 void dbgPrintHeap();
 
+#ifdef TEST
 int main()
 {
 	setvbuf(stdout, 0, _IONBF, 0);
@@ -38,13 +38,28 @@ int main()
 	char *ptr1 = malloc(8);
 	dbgPrintHeap();
 
+	char *ptr2 = realloc(ptr0, 21);
+	sprintf(ptr2, "Hello, world!");
+	dbgPrintHeap();
+
+	char *ptr3 = calloc(5, sizeof(int));
+	for(int i = 0; i < 5; i++)
+		ptr3[i] = i + 1;
+
 	free(ptr0);
+	dbgPrintHeap();
+
+	free(ptr3);
+	dbgPrintHeap();
+
+	free(ptr2);
 	dbgPrintHeap();
 
 	free(ptr1);
 	dbgPrintHeap();
 
 }
+#endif
 
 void *malloc(size_t bytes)
 {
@@ -319,7 +334,7 @@ void free(void *ptr)
 	}
 
 	//If small allocation, free block in blocks list
-	
+
 	//get block metadata
 	Block *currBlock = ptr - sizeof(Block);
 
